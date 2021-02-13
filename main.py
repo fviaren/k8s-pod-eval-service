@@ -8,7 +8,7 @@ def get_cluster_data():
     try:
         config.load_kube_config()
         v1 = client.CoreV1Api()
-        pods_complete_list = v1.list_pod_for_all_namespaces(watch=False)
+        pods_complete_list = v1.list_pod_for_all_namespaces()
         pods_list = []
         for i in pods_complete_list.items:
             pod = dict()
