@@ -1,23 +1,36 @@
-from kubernetes import client, config
+from kubernetes import client, config, watch
 from kubernetes.client.rest import ApiException
 from datetime import datetime, timedelta
+import pytz
+import getopt
+import sys
 
 
 # API
-def get_cluster_data():
+def get_cluster_data(namespace=None, timeout_seconds=None):
     try:
         config.load_kube_config()
         v1 = client.CoreV1Api()
-        pods_complete_list = v1.list_pod_for_all_namespaces()
+        w = watch.Watch()
+        events = ''
+        if namespace is None and timeout_seconds is None:
+            events = w.stream(v1.list_pod_for_all_namespaces, watch=True, timeout_seconds=10)
+        elif namespace is None and timeout_seconds is not None:
+            events = w.stream(v1.list_pod_for_all_namespaces, timeout_seconds=timeout_seconds, watch=True)
+        elif namespace is not None and timeout_seconds is None:
+            events = w.stream(v1.list_namespaced_pod, namespace=namespace, watch=True)
+        elif namespace is not None and timeout_seconds is not None:
+            events = w.stream(v1.list_namespaced_pod, namespace=namespace, timeout_seconds=timeout_seconds, watch=True)
         pods_list = []
-        for i in pods_complete_list.items:
+        for event in events:
             pod = dict()
-            pod['name'] = i.metadata.name
-            pod['labels'] = i.metadata.labels
-            pod['image'] = i.spec.containers.image
-            pod['start_time'] = i.status.start_time
+            pod['name'] = event['object'].metadata.name
+            pod['labels'] = event['object'].metadata.labels
+            pod['image'] = event['object'].spec.containers[0].image
+            pod['start_time'] = event['object'].status.start_time
             pods_list.append(pod)
-        return pods_list
+            pod_evaluation = evaluate_pod(pod) 
+            print(pod_evaluation)   
     except ApiException as e:
         raise e
 
@@ -32,7 +45,7 @@ def evaluate_label_team(labels: dict):
 
 
 def evaluate_start_time(start_time: datetime):
-    return datetime.now() - start_time < timedelta(days=7)
+    return datetime.now().replace(tzinfo=pytz.UTC) - start_time < timedelta(days=7)
 
 
 def evaluate_pod(pod: dict):
@@ -55,20 +68,22 @@ def evaluate_pod(pod: dict):
     return pod_evaluation
 
 
-def evaluate_pods(pods_list: list):
-    cluster_evaluation = []
-    for pod in pods_list:
-        cluster_evaluation.append(evaluate_pod(pod))
-    return cluster_evaluation
-
-
-# INTERFACE/OUTPUT
-def output_evaluation():
-    pods_list = get_cluster_data()
-    cluster_eval = evaluate_pods(pods_list)
-    for pod_eval in cluster_eval:
-        print(pod_eval)
-
-
 if __name__ == "__main__":
-    output_evaluation()
+    
+    name_space = None
+    timeout_secs = None
+    
+    try:
+        opts, args = getopt.getopt(sys.argv[1:], "n:t:", ["namespace=", "tmosec="])
+    except getopt.GetoptError as err:
+        print(err)
+        sys.exit(2)
+    for opt, arg in opts:
+        if opt in ("-n", '--namespace'):
+            name_space = arg
+        elif opt in ("-t", '--tmosec'):
+            timeout_secs = arg
+    
+    kwargs = dict(namespace=name_space, timeout_seconds=timeout_secs)
+    
+    get_cluster_data(**{k: v for k, v in kwargs.items() if v is not None})
