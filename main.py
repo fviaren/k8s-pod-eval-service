@@ -7,20 +7,20 @@ import sys
 
 
 # API
-def get_cluster_data(namespace=None, timeout_seconds=None):
+def watch_cluster_eval_pods(namespace=None, timeout_seconds=None):
     try:
         config.load_kube_config()
         v1 = client.CoreV1Api()
         w = watch.Watch()
         events = ''
         if namespace is None and timeout_seconds is None:
-            events = w.stream(v1.list_pod_for_all_namespaces, watch=True, timeout_seconds=10)
+            events = w.stream(v1.list_pod_for_all_namespaces)
         elif namespace is None and timeout_seconds is not None:
-            events = w.stream(v1.list_pod_for_all_namespaces, timeout_seconds=timeout_seconds, watch=True)
+            events = w.stream(v1.list_pod_for_all_namespaces, timeout_seconds=timeout_seconds)
         elif namespace is not None and timeout_seconds is None:
-            events = w.stream(v1.list_namespaced_pod, namespace=namespace, watch=True)
+            events = w.stream(v1.list_namespaced_pod, namespace=namespace)
         elif namespace is not None and timeout_seconds is not None:
-            events = w.stream(v1.list_namespaced_pod, namespace=namespace, timeout_seconds=timeout_seconds, watch=True)
+            events = w.stream(v1.list_namespaced_pod, namespace=namespace, timeout_seconds=timeout_seconds)
         pods_list = []
         for event in events:
             pod = dict()
@@ -74,7 +74,7 @@ if __name__ == "__main__":
     timeout_secs = None
     
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "n:t:", ["namespace=", "tmosec="])
+        opts, args = getopt.getopt(sys.argv[1:], "n:t:", ["namespace=", " ="])
     except getopt.GetoptError as err:
         print(err)
         sys.exit(2)
@@ -86,4 +86,4 @@ if __name__ == "__main__":
     
     kwargs = dict(namespace=name_space, timeout_seconds=timeout_secs)
     
-    get_cluster_data(**{k: v for k, v in kwargs.items() if v is not None})
+    watch_cluster_eval_pods(**{k: v for k, v in kwargs.items() if v is not None})
